@@ -46,6 +46,7 @@ def predict(event: dict) -> list[dict]:
     summary.raise_for_status()
     summary_json = summary.json()
 
+    print(summary_json)
     return [
         {
             "identifier_value": asset["identifier_value"],

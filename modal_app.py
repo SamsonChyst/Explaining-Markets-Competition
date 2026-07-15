@@ -70,6 +70,12 @@ def web():
         config = Config.from_env()
 
         raw_body = await request.body()  # raw bytes — never request.json()
+
+        # Check case
+        print("=== INCOMING WEBHOOK BODY ===")
+        print(raw_body.decode("utf-8", errors="ignore"))
+        print("=============================")
+
         try:
             event = verify_webhook(
                 raw_body=raw_body,
