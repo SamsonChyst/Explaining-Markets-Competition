@@ -13,6 +13,8 @@ dependencies = [
     "pydantic>=2.6",
     # Needed locally so `modal deploy` can read .env via Secret.from_dotenv.
     "python-dotenv>=1.0",
+    "pandas>=2.3.3",
+    "requests>=2.34.2",
 ]
 
 [dependency-groups]
