@@ -15,6 +15,11 @@ ROIC_AI_API = os.getenv('ROIC_AI_API')
 
 def download_transcripts(ticker: str):
     ticker = ticker.upper()
+    output_dir = f'transcripts_{ticker}'
+
+    if os.path.exists(output_dir) and len(os.listdir(output_dir)) > 0:
+        return
+
     headers = {'User-Agent': 'Mozilla/5.0'}
 
     # list of earning calls
@@ -34,7 +39,6 @@ def download_transcripts(ticker: str):
     if not isinstance(calls_list, list):
         return
 
-    output_dir = f'transcripts_{ticker}'
     os.makedirs(output_dir, exist_ok=True)
 
     # listing the years/quarters of calls
@@ -87,5 +91,5 @@ if __name__ == '__main__':
     df = pd.read_csv('companies.csv')[['ticker', 'industry']]
     tickers = df['ticker'].dropna().astype(str).str.strip()
 
-    for ticker in tickers['ticker']:
+    for ticker in tickers:
         download_transcripts(ticker)
