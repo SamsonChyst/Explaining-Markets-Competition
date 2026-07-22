@@ -15,7 +15,7 @@ ROIC_AI_API = os.getenv('ROIC_AI_API')
 
 def download_transcripts(ticker: str):
     ticker = ticker.upper()
-    output_dir = f'transcripts_{ticker}'
+    output_dir = f'Transcripts/{ticker}'
 
     if os.path.exists(output_dir) and len(os.listdir(output_dir)) > 0:
         return
@@ -27,6 +27,7 @@ def download_transcripts(ticker: str):
 
     try:
         response = requests.get(list_url, headers=headers, timeout=10)
+        # 5 responses in a minute - max
         time.sleep(12)
 
         if response.status_code != 200:
@@ -64,10 +65,15 @@ def download_transcripts(ticker: str):
         print(f'Downloading transcript for {ticker} {year} Q{quarter}')
 
         # API
-        transcript_url = f'https://api.roic.ai/v2/company/earnings-calls/transcript/{ticker}/{year}/{quarter}?apikey={ROIC_AI_API}'
+        transcript_url = f'https://api.roic.ai/v2/company/earnings-calls/transcript/{ticker}'
+        params = {
+            'apikey': ROIC_AI_API,
+            'year': year,
+            'quarter': quarter
+        }
 
         try:
-            resp = requests.get(transcript_url, headers=headers, timeout=10)
+            resp = requests.get(transcript_url, headers=headers, params=params, timeout=10)
 
             if resp.status_code == 200:
                 transcript_data = resp.json()
@@ -92,4 +98,11 @@ if __name__ == '__main__':
     tickers = df['ticker'].dropna().astype(str).str.strip()
 
     for ticker in tickers:
+        ticker = ticker.upper()
+        output_dir = f'Transcripts/{ticker}'
+
+        if os.path.exists(output_dir) and len(os.listdir(output_dir)) > 0:
+            print(f'Skipping {ticker}: directory already exists and is not empty')
+            continue
+
         download_transcripts(ticker)
