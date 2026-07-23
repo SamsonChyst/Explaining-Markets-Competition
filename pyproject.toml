@@ -15,6 +15,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "pandas>=2.3.3",
     "requests>=2.34.2",
+    "mistralai>=2.7.1",
 ]
 
 [dependency-groups]
