@@ -16,6 +16,8 @@ dependencies = [
     "pandas>=2.3.3",
     "requests>=2.34.2",
     "mistralai>=2.7.1",
+    "yfinance>=1.5.2",
+    "pandas-datareader>=0.10.0",
 ]
 
 [dependency-groups]

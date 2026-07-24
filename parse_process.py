@@ -12,6 +12,7 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 from mistralai.client import Mistral
+import yfinance as yf
 
 load_dotenv()
 ROIC_AI_API = os.getenv('ROIC_AI_API')
@@ -248,5 +249,7 @@ if __name__ == '__main__':
     '''
 
     # Mistral AI summary correction
+    '''
     for ticker in os.listdir('Transcripts/'):
         summary_extract(ticker)
+    '''
