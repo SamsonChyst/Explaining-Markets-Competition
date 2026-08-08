@@ -23,3 +23,7 @@ venv/
 .vscode/
 .idea/
 .DS_Store
+
+# Data files (large/generated, not versioned)
+data/archive/
+data/processed/
