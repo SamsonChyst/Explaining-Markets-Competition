@@ -1,0 +1,81 @@
+event_id,quarter,target_percentile_quarter,surprise_percentile_quarter,prediction,error
+ea_SKYT_Q3_2025,2025Q4,0.9848566792861,0.9577006507592191,0.9,
+ea_WEN_Q3_2025,2025Q4,0.621416982152515,0.7554229934924078,0.15,
+ea_KKR_Q3_2025,2025Q4,0.626825310978907,0.5330802603036876,0.85,
+ea_IFF_Q3_2025,2025Q4,0.718766901027582,0.3855748373101952,0.78,
+ea_AMAT_Q4_2025,2025Q4,0.616008653326122,0.3530368763557484,0.85,
+ea_SANM_Q4_2025,2025Q4,0.943212547322877,0.544468546637744,0.85,
+ea_VERI_Q3_2025,2025Q4,0.128177393185506,0.7640997830802603,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_COLD_Q4_2025,2026Q1,0.928033472803347,0.917641959254443,0.15,
+ea_DDOG_Q3_2025,2025Q4,0.977285018929151,0.5601952277657267,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_BDX_Q4_2025,2025Q4,0.636560302866414,0.3470715835140998,0.85,
+ea_ORA_Q4_2025,2026Q1,0.199581589958159,0.3740788903337668,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_BLMN_Q3_2025,2025Q4,0.136289886425095,0.8964208242950108,0.78,
+ea_AVAH_Q4_2025,2026Q1,0.211297071129707,0.8196792371044647,0.85,
+ea_LUCD_Q3_2025,2025Q4,0.812871822606814,0.06832971800433839,0.3,
+ea_SUIG_Q4_2025,2026Q1,0.302092050209205,0.006718682271348071,0.85,
+ea_CLW_Q4_2025,2026Q1,0.186610878661088,0.8456870394451669,0.65,
+ea_LEU_Q4_2025,2026Q1,0.0430962343096234,0.1811876896402254,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_EXE_Q4_2025,2026Q1,0.343096234309623,0.5504984828781968,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_SLGN_Q4_2025,2026Q1,0.86234309623431,0.4384482011270048,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_STRA_Q4_2025,2026Q1,0.748953974895398,0.7611616818378847,0.85,
+ea_HFFG_Q3_2025,2025Q4,0.295294753921038,0.07429501084598698,0.78,
+ea_BKSY_Q4_2025,2026Q1,0.489121338912134,0.9042045947117469,0.85,
+ea_CWH_Q3_2025,2025Q4,0.0227149810708491,0.8508676789587852,0.85,
+ea_AIRG_Q4_2025,2026Q1,0.193723849372385,0.6536627654963155,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_NOW_Q3_2025,2025Q4,0.715521903731747,0.5363340563991323,0.9,
+ea_LIDR_Q4_2025,2026Q1,0.943096234309623,0.9345470307758994,0.85,
+ea_CHPT_Q4_2026,2026Q1,0.207112970711297,0.9932813177286519,0.78,
+ea_ENOV_Q4_2025,2026Q1,0.91255230125523,0.8071087993064586,0.85,
+ea_TXG_Q3_2025,2025Q4,0.939426717144402,0.136117136659436,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_CBT_Q4_2025,2025Q4,0.260681449432125,0.3183297180043384,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_MVIS_Q4_2025,2026Q1,0.0146443514644351,0.028175119202427396,0.1,
+ea_AEIS_Q4_2025,2026Q1,0.875313807531381,0.5422626788036411,0.9,
+ea_IP_Q3_2025,2025Q4,0.119524067063277,0.06290672451193059,0.85,
+ea_VYX_Q4_2025,2026Q1,0.190376569037657,0.7789336801040312,0.78,
+ea_MANH_Q4_2025,2026Q1,0.29581589958159,0.5786736020806242,0.85,
+ea_LMFA_Q3_2025,2025Q4,0.0989724175229854,0.9278741865509761,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_PYPL_Q4_2025,2026Q1,0.0476987447698745,0.23450368443866493,0.15,
+ea_GROV_Q3_2025,2025Q4,0.65440778799351,0.9718004338394793,0.15,
+ea_TKNO_Q4_2025,2026Q1,0.907531380753138,0.3261811876896402,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_CTRI_Q3_2025,2025Q4,0.884261763115197,0.13720173535791758,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_FTNT_Q4_2025,2026Q1,0.638912133891213,0.5626354573038578,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_XYZ_Q3_2025,2025Q4,0.195240670632774,0.4018438177874187,0.85,
+ea_MCHX_Q3_2025,2025Q4,0.67658193618172,0.12445770065075921,0.15,
+ea_AEYE_Q3_2025,2025Q4,0.601406165494862,0.7396963123644251,0.85,
+ea_WW_Q3_2025,2025Q4,0.755543537047052,0.0650759219088937,0.15,
+ea_PANW_Q2_2026,2026Q1,0.232217573221757,0.6090160381447768,0.85,
+ea_FIX_Q3_2025,2025Q4,0.947539210383991,0.6431670281995662,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_HRB_Q1_2026,2025Q4,0.349378042184965,0.7001084598698482,0.78,
+ea_NWN_Q4_2025,2026Q1,0.769874476987448,0.46770697876029477,0.85,
+ea_MNTN_Q4_2025,2026Q1,0.99163179916318,0.9388816644993498,0.85,
+ea_XMTR_Q4_2025,2026Q1,0.0288702928870293,0.6631989596879063,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_IONS_Q4_2025,2026Q1,0.266945606694561,0.5652362375379281,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_ZSPC_Q3_2025,2025Q4,0.706327744726879,0.01843817787418655,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_UHS_Q3_2025,2025Q4,0.663601946998377,0.735357917570499,0.85,
+ea_ABBV_Q4_2025,2026Q1,0.357740585774059,0.38491547464239273,0.85,
+ea_BTSG_Q3_2025,2025Q4,0.56625202812331,0.210412147505423,0.85,
+ea_GRDN_Q4_2025,2026Q1,0.562761506276151,0.7329865626354573,0.85,
+ea_WK_Q3_2025,2025Q4,0.817198485667929,0.7613882863340564,0.9,
+ea_GS_Q4_2025,2026Q1,0.705439330543933,0.6814044213263979,0.88,
+ea_DAL_Q4_2025,2026Q1,0.415899581589958,0.399653229302124,0.85,
+ea_LUV_Q4_2025,2026Q1,0.948953974895398,0.3905504984828782,0.95,
+ea_ROCK_Q3_2025,2025Q4,0.357490535424554,0.2044468546637744,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_BWIN_Q3_2025,2025Q4,0.865332612222823,0.6225596529284165,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_SGC_Q4_2025,2026Q1,0.561506276150628,0.6387082791504118,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_UFI_Q2_2026,2026Q1,0.731380753138075,0.941048981361075,0.15,
+ea_KKR_Q4_2025,2026Q1,0.327615062761506,0.35717381881231036,0.5,"API error occurred: Status 429. Body: {""object"":""error"",""message"":""Rate limit exceeded"",""type"":""rate_limited"",""param"":null,""code"":""1300"",""raw_status_code"":429}"
+ea_SEI_Q4_2025,2026Q1,0.632635983263598,0.612917208495882,0.95,
+ea_GTN_Q3_2025,2025Q4,0.751216873985938,0.9539045553145337,0.85,
+ea_PLSE_Q3_2025,2025Q4,0.420227149810708,0.5092190889370932,0.65,
+ea_HDSN_Q3_2025,2025Q4,0.03677663601947,0.8481561822125814,0.85,
+ea_CRCL_Q4_2025,2026Q1,0.988702928870293,0.7785002167316861,0.85,
+ea_RGA_Q3_2025,2025Q4,0.341265548945376,0.6892624728850325,0.85,
+ea_BWXT_Q3_2025,2025Q4,0.255273120605733,0.42787418655097614,0.9,
+ea_LRN_Q1_2026,2025Q4,0.0005408328826392,0.46529284164859,0.85,
+ea_VRSK_Q4_2025,2026Q1,0.664435146443515,0.5661031642826181,0.78,
+ea_OC_Q3_2025,2025Q4,0.146024878312601,0.2592190889370933,0.15,
+ea_LINE_Q4_2025,2026Q1,0.752301255230125,0.17685305591677503,0.15,
+ea_TITN_Q4_2026,2026Q1,0.192468619246862,0.06415257910706545,0.15,
+ea_MO_Q3_2025,2025Q4,0.227149810708491,0.32049891540130154,0.65,
+ea_CMG_Q4_2025,2026Q1,0.62510460251046,0.3948851322063286,0.3,
