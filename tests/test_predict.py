@@ -34,7 +34,7 @@ class _FakeResponse:
 
 
 def test_predict_fallback_shape(monkeypatch) -> None:
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("MISTRAL_KEY", raising=False)
     monkeypatch.setattr(predict_module.httpx, "get", lambda *a, **k: _FakeResponse())
 
     preds = predict_module.predict(SAMPLE_EVENT)
