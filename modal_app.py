@@ -33,7 +33,7 @@ app = modal.App("explaining-markets-starter")
 
 image = (
     modal.Image.debian_slim()
-    .pip_install("fastapi[standard]", "httpx", "openai", "pydantic")
+    .pip_install("fastapi[standard]", "httpx", "mistralai>=2.7.1", "python-dotenv")
     .add_local_python_source("explaining_markets", "predict")
 )
 
