@@ -9,10 +9,12 @@ Required:
 """
 
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 
-DEFAULT_API_BASE_URL = "https://api-beta.explainingmarkets.ai/v1"
+DEFAULT_API_BASE_URL = "https://api.explainingmarkets.ai/v1"
+DEFAULT_OPENAI_MODEL = "gpt-5.4-nano"
 
 
 @dataclass(frozen=True)
@@ -39,4 +41,3 @@ def _require(name: str) -> str:
             f"(copy .env.example to .env), then re-deploy. See the README."
         )
     return value
-

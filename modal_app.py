@@ -12,23 +12,9 @@ The webhook is served at the root path on purpose: the URL Modal prints on deplo
 
 Deploy:    uv run modal deploy modal_app.py
 Dev/local: uv run modal serve modal_app.py
-
-The webhook handler is synchronous: it verifies the signature, runs your
-`predict()` from predict.py, submits the result, and only then ACKs with 200.
-That's safe because your per-event deadline starts when you ACK 200 — so you've
-always submitted before the clock starts. Deliveries are deduped on the
-`Webhook-Id` header (the server retries on 5xx/timeout, so the same event can
-arrive more than once).
-
-Note: we deliberately do NOT use `from __future__ import annotations` here. The
-route handlers are defined inside `web()`, and FastAPI must see the real `Request`
-/ `Response` classes (not stringized annotations it can't resolve from this nested
-scope) to inject them correctly — otherwise it treats `request` as a query
-parameter and rejects every delivery with 422.
 """
 
 import modal
-
 app = modal.App("explaining-markets-starter")
 
 image = (
@@ -37,41 +23,103 @@ image = (
     .add_local_python_source("explaining_markets", "predict")
 )
 
-# Distributed key-value store for idempotency. Persists across redeploys, so a
-# retried webhook is never processed twice. Keyed on the Webhook-Id header.
 seen_webhooks = modal.Dict.from_name("em-webhook-dedupe", create_if_missing=True)
+secrets = [modal.Secret.from_dotenv(__file__)]
 
 
-# Credentials are read from your local .env at deploy time (see .env.example).
-# Prefer Modal's secret store instead? See docs/advanced.md.
+def _claim(webhook_id):
+    if not webhook_id:
+        return True
+    return seen_webhooks.put(webhook_id, "in_flight", skip_if_exists=True)
+
+
+async def _claim_aio(webhook_id):
+    if not webhook_id:
+        return True
+    return await seen_webhooks.put.aio(
+        webhook_id,
+        "in_flight",
+        skip_if_exists=True,
+    )
+
+
+def _release(webhook_id, submitted):
+    if not webhook_id:
+        return
+
+    if submitted:
+        seen_webhooks[webhook_id] = "done"
+    else:
+        seen_webhooks.pop(webhook_id, None)
+
+
 @app.function(
     image=image,
-    secrets=[modal.Secret.from_dotenv(__file__)],
+    secrets=secrets,
+    timeout=600,
+    retries=0,
+)
+def predict_and_submit(event: dict, webhook_id: str | None = None):
+    from explaining_markets.client import submit_predictions
+    from explaining_markets.config import Config
+    from explaining_markets.event_utils import is_test, neutral_predictions
+    from predict import predict
+
+    submitted = False
+
+    try:
+        predictions = (
+            neutral_predictions(event)
+            if is_test(event)
+            else predict(event)
+        )
+
+        submit_predictions(
+            event_id=event["event_id"],
+            predictions=predictions,
+            config=Config.from_env(),
+        )
+
+        submitted = True
+
+    except Exception as exc:
+        print(
+            f"[ERROR] prediction failed for event "
+            f"{event.get('event_id')}: {exc}"
+        )
+
+    finally:
+        _release(webhook_id, submitted)
+
+
+@app.function(
+    image=image,
+    secrets=secrets,
 )
 @modal.asgi_app(label="explaining-markets")
 def web():
     from fastapi import FastAPI, Request, Response
 
     from explaining_markets import WebhookVerificationError, verify_webhook
-    from explaining_markets.client import submit_predictions
     from explaining_markets.config import Config
-    from explaining_markets.event_utils import is_test, log_deadline
-    from predict import predict
+    from explaining_markets.event_utils import log_deadline
 
     api = FastAPI(title="Explaining Markets starter")
 
     @api.get("/")
     def health() -> dict:
-        return {"ok": True, "service": "explaining-markets-starter"}
+        return {
+            "ok": True,
+            "service": "explaining-markets-starter",
+        }
 
     @api.post("/")
-    @api.post("/competition/webhook")  # alias, so an explicit-path URL also works
+    @api.post("/competition/webhook")
     async def competition_webhook(request: Request) -> Response:
         config = Config.from_env()
 
-        raw_body = await request.body()  # raw bytes — never request.json()
+        raw_body = await request.body()
 
-        # Check case
         print("=== INCOMING WEBHOOK BODY ===")
         print(raw_body.decode("utf-8", errors="ignore"))
         print("=============================")
@@ -83,31 +131,23 @@ def web():
                 secret=config.webhook_secret,
             )
         except WebhookVerificationError as exc:
-            return Response(content=str(exc), status_code=401)
+            return Response(
+                content=str(exc),
+                status_code=401,
+            )
 
-        # Idempotency: the Webhook-Id header (== event["id"]) is stable across
-        # retries. Skip anything we've already handled.
         webhook_id = event.get("id")
-        if webhook_id and webhook_id in seen_webhooks:
-            return Response(status_code=200)
 
-        # The portal's "Test Webhook" button sends a synthetic TEST event — ACK
-        # it so the smoke test passes, but don't predict or submit.
-        if is_test(event):
-            if webhook_id:
-                seen_webhooks[webhook_id] = True
+        if not await _claim_aio(webhook_id):
             return Response(status_code=200)
 
         log_deadline(event)
-        predictions = predict(event)
-        submit_predictions(
-            event_id=event["event_id"],
-            predictions=predictions,
-            config=config,
+
+        await predict_and_submit.spawn.aio(
+            event,
+            webhook_id,
         )
 
-        if webhook_id:
-            seen_webhooks[webhook_id] = True
         return Response(status_code=200)
 
     return api
