@@ -10,6 +10,9 @@ deploy time rather than mid-run. A single failed call to the Mistral API
 (network/API error, or a reply that can't be parsed into a number) is retried
 a few times before falling back to a 0.5 placeholder for that one asset, so
 one bad event doesn't stall the whole prediction run.
+
+When an event has multiple focal assets, calls are spaced out by
+REQUEST_SLEEP_SECONDS to stay under Mistral's per-minute rate limit.
 """
 
 from __future__ import annotations
@@ -34,8 +37,13 @@ MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-large-latest")
 
 # One _ask_llm call retries this many times (including the first attempt)
 # before giving up and returning the 0.5 placeholder.
-MAX_ATTEMPTS = 4
+MAX_ATTEMPTS = 3
 RETRY_BACKOFF_SECONDS = 2.0
+
+# Delay between successive per-asset requests within a single event, to stay
+# under Mistral's requests-per-minute limit (observed as 4 req/min, i.e. one
+# every ~15s). Configurable via env var without touching code.
+REQUEST_SLEEP_SECONDS = float(os.getenv("REQUEST_SLEEP_SECONDS", "15.0"))
 
 
 def predict(event: dict) -> list[dict]:
@@ -59,17 +67,23 @@ def predict(event: dict) -> list[dict]:
     summary_json = summary.json()
 
     print(summary_json)
-    return [
-        {
-            "identifier_value": asset["identifier_value"],
-            "predicted_percentile": _ask_llm(
-                summary=summary_json,
-                ticker=asset["identifier_value"],
-                event_type=event["event_type"],
-            ),
-        }
-        for asset in event["focal_assets"]
-    ]
+
+    predictions: list[dict] = []
+    for i, asset in enumerate(event["focal_assets"]):
+        if i > 0:
+            # Space out requests so we don't trip Mistral's rate limit.
+            time.sleep(REQUEST_SLEEP_SECONDS)
+        predictions.append(
+            {
+                "identifier_value": asset["identifier_value"],
+                "predicted_percentile": _ask_llm(
+                    summary=summary_json,
+                    ticker=asset["identifier_value"],
+                    event_type=event["event_type"],
+                ),
+            }
+        )
+    return predictions
 
 
 BASE_PROMPT = """
