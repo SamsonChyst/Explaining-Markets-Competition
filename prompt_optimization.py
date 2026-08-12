@@ -3,6 +3,7 @@ import json
 import os
 import random
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -58,42 +59,72 @@ MODEL = "mistral-large-latest"
 
 
 # ------------------------------------------------------------
-# Evolution
+# Evolution — SEARCH (train) sample
 # ------------------------------------------------------------
 
 GENERATIONS = 15
 CANDIDATES_PER_GENERATION = 2
 
-# Number of events selected PER QUARTER.
+# The search/train sample is stratified by DECILE of
+# target_percentile_quarter (not by quarter anymore). From every
+# decile we draw a random number of events (per_decile_min.max),
+# preferring "inconsistent" events -- ones where
+# surprise_percentile_quarter poorly explains
+# target_percentile_quarter. Those are exactly the events that
+# carry incremental signal beyond earnings surprise, which is
+# what the prompt is being optimized to extract.
 #
 # Example:
-#   10 quarters × 40 = 400 events
-#   8 quarters × 40  = 320 events
-#
-# This is intentionally much smaller than the full
-# optimization dataset.
-OPTIMIZATION_PER_QUARTER = 40
+#   10 deciles x ~16.5 average -> ~165 events total.
+SEARCH_DECILES = 10
+SEARCH_PER_DECILE_MIN = 30
+SEARCH_PER_DECILE_MAX = 35
 
 RANDOM_STATE = 42
+
+# The old sample used RANDOM_STATE=42 on every single run, so
+# every optimization run trained on the exact same events. The
+# seed below changes on every run instead (random.SystemRandom is
+# independent of the random.seed() call further down), while
+# staying FIXED for the duration of that run -- every generation
+# and every candidate within one run still sees the identical
+# sample, which is required for a fair R² comparison between
+# candidates. Across different runs, the search sample varies.
+SEARCH_SAMPLE_SEED = random.SystemRandom().randint(0, 2**31 - 1)
+
+# Fixed size of the held-out validation batch drawn from the
+# validation quarter. The quarter split itself (train vs.
+# validation quarter) is unchanged.
+VALIDATION_SAMPLE_SIZE = 350
 
 
 # ------------------------------------------------------------
 # Prediction API
 # ------------------------------------------------------------
 
-PREDICTION_CONCURRENCY = 5
+# The Mistral key on this account is limited to
+# MISTRAL_MAX_REQUESTS_PER_MINUTE requests/minute, shared across
+# BOTH prediction calls and optimizer/candidate-generation calls.
+# A global rate limiter (see RATE LIMITING section below)
+# serializes every API call and guarantees that limit is never
+# exceeded. Because of that, higher concurrency no longer buys
+# throughput -- it's kept at 1 so threads don't pile up uselessly
+# behind the limiter.
+PREDICTION_CONCURRENCY = 1
 
 MAX_RETRIES = 5
 BASE_SLEEP = 8
 
 PREDICTION_MAX_TOKENS = 32
 
+MISTRAL_MAX_REQUESTS_PER_MINUTE = 120
+
 
 # ------------------------------------------------------------
 # Optimizer API
 # ------------------------------------------------------------
 
-OPTIMIZER_MAX_TOKENS = 4000
+OPTIMIZER_MAX_TOKENS = 5000
 
 OPTIMIZER_MAX_PROMPT_LENGTH = 30000
 
@@ -113,6 +144,70 @@ OPTIMIZER_MAX_PROMPT_LENGTH = 30000
 # ============================================================
 
 random.seed(RANDOM_STATE)
+
+
+# ============================================================
+# RATE LIMITING
+# ============================================================
+
+# Minimum spacing between any two consecutive Mistral API calls.
+# 60 / MISTRAL_MAX_REQUESTS_PER_MINUTE is the theoretical minimum
+# spacing (15s at 4/min); +1s is a safety margin against network
+# jitter and clock imprecision so the account limit is never
+# brushed right at the boundary.
+_MIN_SECONDS_BETWEEN_CALLS = 2.2
+
+
+class RateLimiter:
+    """
+    Thread-safe limiter shared by EVERY Mistral API call: both
+    prediction calls (which run in worker threads via
+    asyncio.to_thread) and optimizer/candidate-generation calls
+    (which run on the main thread), since they draw on the same
+    account-wide per-minute quota.
+
+    Guarantees at least `min_interval` seconds between any two
+    consecutive calls, regardless of how many threads try to call
+    at once -- callers simply queue up on the lock and are
+    released one at a time, evenly spaced. This -- not
+    PREDICTION_CONCURRENCY -- is what actually prevents 429 /
+    rate-limit errors.
+    """
+
+    def __init__(self, min_interval: float):
+        self.min_interval = min_interval
+        self._lock = threading.Lock()
+        self._last_call = 0.0
+
+    def wait(self):
+        with self._lock:
+            now = time.monotonic()
+            sleep_for = self.min_interval - (now - self._last_call)
+
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+
+            self._last_call = time.monotonic()
+
+
+RATE_LIMITER = RateLimiter(_MIN_SECONDS_BETWEEN_CALLS)
+
+
+def _looks_like_rate_limit_error(exc: Exception) -> bool:
+    """
+    Best-effort detection of a 429 / rate-limit response, so
+    retries can back off for a full minute instead of the normal
+    (much shorter) exponential backoff used for other errors.
+    """
+
+    text = str(exc).lower()
+
+    return (
+        "429" in text
+        or "rate limit" in text
+        or "rate_limit" in text
+        or "too many requests" in text
+    )
 
 
 # ============================================================
@@ -212,82 +307,179 @@ def load_dataset() -> pd.DataFrame:
 
 
 # ============================================================
-# STRATIFIED SAMPLE
+# SEARCH SAMPLE (DECILE-STRATIFIED, INCONSISTENCY-WEIGHTED)
 # ============================================================
 
-def build_stratified_sample(
+def build_decile_stratified_sample(
     df: pd.DataFrame,
-    per_quarter: int = OPTIMIZATION_PER_QUARTER,
-    random_state: int = RANDOM_STATE,
+    n_deciles: int = SEARCH_DECILES,
+    per_decile_min: int = SEARCH_PER_DECILE_MIN,
+    per_decile_max: int = SEARCH_PER_DECILE_MAX,
+    seed: int = SEARCH_SAMPLE_SEED,
 ) -> pd.DataFrame:
     """
-    Create a FIXED sample containing approximately
-    `per_quarter` events from every quarter.
+    Build the SEARCH/TRAIN sample used during evolutionary search.
 
-    This sample must not change between generations.
+    Stratifies by DECILE of target_percentile_quarter so the
+    sample covers the full outcome range (not just whatever a
+    given quarter happens to contain), and within each decile
+    prefers "inconsistent" events -- ones where
+    surprise_percentile_quarter poorly explains
+    target_percentile_quarter -- since those carry the most
+    incremental signal for the prompt to learn from.
+
+    The sample is FIXED for the duration of one run (built once
+    in main() and reused across every generation/candidate, which
+    is required for a fair R² comparison), but the seed differs
+    between runs, so repeated optimization runs are exposed to
+    different, more varied data over time.
     """
 
-    if "quarter" not in df.columns:
+    required = {
+        "target_percentile_quarter",
+        "surprise_percentile_quarter",
+    }
+
+    missing = required - set(df.columns)
+
+    if missing:
         raise ValueError(
-            "Cannot build stratified sample: "
-            "'quarter' column does not exist."
+            "Cannot build decile-stratified sample: "
+            f"missing columns {sorted(missing)}"
         )
+
+    rng = random.Random(seed)
+
+    work = df.copy()
+
+    # How poorly surprise explains the target for this event.
+    # Higher = more "inconsistent" = more informative for search.
+    work["_inconsistency"] = (
+        work["target_percentile_quarter"]
+        - work["surprise_percentile_quarter"]
+    ).abs()
+
+    try:
+        work["_decile"] = pd.qcut(
+            work["target_percentile_quarter"],
+            q=n_deciles,
+            labels=False,
+            duplicates="drop",
+        )
+    except ValueError as exc:
+        raise ValueError(
+            "Could not compute deciles of "
+            "'target_percentile_quarter'."
+        ) from exc
+
+    print(
+        f"\nBuilding decile-stratified SEARCH sample "
+        f"(seed={seed}):"
+    )
 
     samples = []
 
-    quarters = sorted(df["quarter"].dropna().unique())
+    deciles = sorted(work["_decile"].dropna().unique())
 
-    if not quarters:
+    if not deciles:
         raise ValueError(
-            "No quarters found in dataset."
+            "No deciles found for search sample."
         )
 
-    print("\nBuilding fixed stratified optimization sample:")
-
-    for quarter in quarters:
-        group = df[df["quarter"] == quarter]
+    for decile in deciles:
+        group = work[work["_decile"] == decile]
 
         if group.empty:
             continue
 
-        n = min(per_quarter, len(group))
+        n_target = rng.randint(per_decile_min, per_decile_max)
+        n = min(n_target, len(group))
 
-        sampled = group.sample(
-            n=n,
-            random_state=random_state,
-        )
+        weights = group["_inconsistency"] + 1e-6
+
+        if weights.isna().any() or weights.sum() <= 0:
+            sampled = group.sample(
+                n=n,
+                random_state=rng.randint(0, 2**31 - 1),
+            )
+        else:
+            # Weighted-random draw: bias toward inconsistent
+            # events without deterministically taking only the
+            # top-N, so the sample stays random and doesn't
+            # collapse onto a handful of extreme outlier rows.
+            sampled = group.sample(
+                n=n,
+                weights=weights,
+                random_state=rng.randint(0, 2**31 - 1),
+            )
 
         samples.append(sampled)
 
         print(
-            f"  {quarter}: {n}/{len(group)}"
+            f"  decile {int(decile)}: {n}/{len(group)} "
+            f"(target n={n_target})"
         )
 
     if not samples:
         raise ValueError(
-            "Could not construct optimization sample."
+            "Could not construct decile-stratified search sample."
         )
 
-    sample = pd.concat(
-        samples,
-        ignore_index=True,
-    )
+    sample = pd.concat(samples, ignore_index=True)
+
+    sample = sample.drop(columns=["_inconsistency", "_decile"])
 
     # Shuffle final order while keeping composition fixed.
     sample = sample.sample(
         frac=1,
-        random_state=random_state,
+        random_state=rng.randint(0, 2**31 - 1),
     ).reset_index(drop=True)
 
-    print(
-        f"\nOptimization search sample: {len(sample)} events"
-    )
+    print(f"\nSearch sample size: {len(sample)} events")
 
     print(
         sample["quarter"]
         .value_counts()
         .sort_index()
         .to_string()
+    )
+
+    return sample
+
+
+# ============================================================
+# VALIDATION SAMPLE
+# ============================================================
+
+def build_validation_sample(
+    df: pd.DataFrame,
+    n: int = VALIDATION_SAMPLE_SIZE,
+    random_state: int = RANDOM_STATE,
+) -> pd.DataFrame:
+    """
+    Draw a fixed-size (default 100) random sample from the
+    validation quarter.
+
+    Uses the fixed RANDOM_STATE (not the per-run search seed) so
+    the held-out validation batch stays the same, comparable set
+    across successive optimization runs.
+    """
+
+    if df.empty:
+        raise ValueError(
+            "Validation dataframe is empty."
+        )
+
+    n = min(n, len(df))
+
+    sample = df.sample(
+        n=n,
+        random_state=random_state,
+    ).reset_index(drop=True)
+
+    print(
+        f"\nValidation sample: {len(sample)}/{len(df)} events "
+        f"(quarter(s): {sorted(sample['quarter'].unique())})"
     )
 
     return sample
@@ -440,6 +632,11 @@ def synchronous_prediction(
 
     for attempt in range(MAX_RETRIES):
         try:
+            # Blocks (across ALL threads) until it is safe to
+            # make another request without exceeding the
+            # account's per-minute limit.
+            RATE_LIMITER.wait()
+
             response = client.chat.complete(
                 model=MODEL,
                 messages=[
@@ -477,12 +674,21 @@ def synchronous_prediction(
             last_error = str(exc)
 
             if attempt < MAX_RETRIES - 1:
-                sleep_time = BASE_SLEEP * (
-                    2 ** attempt
-                )
 
-                # Small jitter prevents synchronized retries.
-                sleep_time += random.uniform(0, 2)
+                if _looks_like_rate_limit_error(exc):
+                    # Extra-safe backoff specifically for
+                    # rate-limit errors: wait a full minute (plus
+                    # jitter) so the per-minute quota has
+                    # definitely reset, even if something outside
+                    # this script also used the same key.
+                    sleep_time = 60.0 + random.uniform(0, 5)
+                else:
+                    sleep_time = BASE_SLEEP * (
+                        2 ** attempt
+                    )
+
+                    # Small jitter prevents synchronized retries.
+                    sleep_time += random.uniform(0, 2)
 
                 time.sleep(sleep_time)
 
@@ -650,17 +856,12 @@ async def evaluate_prompt(
 OPTIMIZER_SYSTEM_PROMPT = r"""
 You are the creator of an evolving financial prediction prompt.
 
-Your task is to improve a prompt that is used by another LLM to
-predict the cross-sectional percentile of an unexpected stock
-return following an earnings call.
+Your task is to improve a prompt used by an LLM to predict the cross-sectional percentile of an unexpected stock return following an earnings call.
 
 The objective is NOT to write an explanation of the prompt.
-
-The objective is to discover a materially better prediction
-strategy and encode it directly into the prompt.
+The objective is to discover a materially better prediction strategy and encode it directly into the generated prompt.
 
 You will receive:
-
 1. The current prediction prompt.
 2. Its measured R².
 3. Results from previous generations.
@@ -669,63 +870,37 @@ You will receive:
 
 You must reason like a quantitative researcher.
 
-IMPORTANT:
+CORE QUANTITATIVE PRINCIPLES:
+- The target is a cross-sectional percentile within the quarter (0.00 to 1.00).
+- The evaluation model is approximately: target_percentile_quarter ~ prediction + surprise_percentile_quarter.
+- The prompt must extract INCREMENTAL signal complementary to earnings surprise using strictly the provided facts.
+- Do not invent missing facts or introduce external market data.
+- Universal Baseline Anchor: All predictions must anchor at 0.50 (the unconditional cross-sectional quarterly median) as a starting point before applying incremental deltas.
 
-- The target is a cross-sectional percentile within quarter.
-- Predictions are numbers between 0 and 1.
-- The evaluation is approximately:
+EVOLUTIONARY & EXPERIMENTAL MANDATE:
+- Do not be afraid to radically restructure or completely rewrite candidate prompts.
+- Eliminate rigid boundary "cliffs" (where a 1% metric miss causes a 20-percentile score drop) and asymmetric AND/OR logic traps. Experiment with continuous, weighted additive/subtractive scoring models.
+- NEVER allow candidate prompts to instruct the model to "output ONLY a number" or "respond with ONLY the final score" as this suppresses Chain-of-Thought (CoT) reasoning and degrades performance.
 
-    target_percentile_quarter
-        ~ prediction
-        + surprise_percentile_quarter
-
-- Therefore the prompt should produce information that is
-  complementary to earnings surprise, rather than merely
-  repeating earnings surprise.
-- The goal is predictive information about unexpected stock
-  performance after the earnings event.
-- Focus on information contained in the provided earnings-call
-  facts.
-- Do not invent information that is absent from the facts.
-- Do not introduce external market data that the model does not
-  receive.
-- Avoid generic financial-analysis language unless it changes
-  the numerical prediction.
-- Think about what features in the facts may contain incremental
-  information beyond earnings surprise.
-- Consider guidance changes, margins, cash flow, segment
-  dispersion, forward-looking information, one-time effects,
-  quality of earnings, operational inflections, and other
-  information that could affect the post-earnings unexpected
-  return.
-- Remember that the target is cross-sectional. Relative
-  extremeness matters.
-- Calibration matters.
-- The model should not simply predict the unconditional median.
-- The final prompt must be practical for repeated inference.
-
-You are performing evolutionary optimization.
-
-A candidate should be meaningfully different when there is a
-reasonable opportunity to improve the reasoning process.
-
-Do NOT optimize for elegant prose.
-
-Optimize for predictive signal.
+ANALYTICAL DIRECTIVES TO ENCODE IN GENERATED PROMPTS:
+1. Fama-French 12 Industry Contextualization: Instruct the prediction model to first classify the company into one of the 12 Fama-French industry groups. Industry context must be used strictly to gauge signal severity (e.g., margin sensitivity), NOT to shift the baseline starting percentile away from 0.50 (which causes sector-bias hallucinations).
+2. Mathematical Safety & Clamping:
+   - Require candidate prompts to specify the absolute denominator formula: Delta % = (Current - Prior) / |Prior| for negative or zero base-rate metrics (e.g., net income turning from negative to positive).
+   - Enforce explicit score clamping in candidate prompts: Final Prediction = min(1.00, max(0.00, 0.50 + Sum(Deltas))) to prevent mathematical overflow/underflow outside [0.00, 1.00].
+3. Logical Coherence & Signal Hierarchy: Instruct the model to detect and reconcile contradictory or mutually exclusive signals using a strict hierarchy (Guidance > Cash Flow Quality > Margins > Segment Dispersion > Balance Sheet/Liquidity).
+4. Predictive Incremental Signals: Focus on forward guidance revisions, operating cash flow quality vs. GAAP earnings, sustainable vs. one-time margin drivers, and structural revenue dispersion.
 
 OUTPUT FORMAT:
 
 Return ONLY the complete replacement prompt.
 
 The replacement prompt MUST contain:
-
 {facts}
 
-It must instruct the prediction model to output only the final
-number between 0 and 1.
+The replacement prompt MUST instruct the prediction model to perform step-by-step reasoning first, but end its response with the final number on a separate line formatted strictly as:
+FINAL_PREDICTION: [number]
 
 Do not wrap the prompt in Markdown fences.
-
 Do not add commentary before or after the prompt.
 """
 
@@ -862,6 +1037,11 @@ def generate_candidate_prompt(
     for attempt in range(MAX_RETRIES):
 
         try:
+            # Same shared limiter as prediction calls -- the
+            # per-minute quota is one account-wide budget, not
+            # one budget per call type.
+            RATE_LIMITER.wait()
+
             response = client.chat.complete(
                 model=MODEL,
                 messages=[
@@ -903,11 +1083,15 @@ def generate_candidate_prompt(
             last_error = str(exc)
 
             if attempt < MAX_RETRIES - 1:
-                sleep_time = BASE_SLEEP * (
-                    2 ** attempt
-                )
 
-                sleep_time += random.uniform(0, 2)
+                if _looks_like_rate_limit_error(exc):
+                    sleep_time = 60.0 + random.uniform(0, 5)
+                else:
+                    sleep_time = BASE_SLEEP * (
+                        2 ** attempt
+                    )
+
+                    sleep_time += random.uniform(0, 2)
 
                 time.sleep(sleep_time)
 
@@ -961,9 +1145,10 @@ def save_state(
         "current_prompt": current_prompt,
         "best_prompt": best_prompt,
         "model": MODEL,
-        "optimization_per_quarter": (
-            OPTIMIZATION_PER_QUARTER
-        ),
+        "search_deciles": SEARCH_DECILES,
+        "search_per_decile_min": SEARCH_PER_DECILE_MIN,
+        "search_per_decile_max": SEARCH_PER_DECILE_MAX,
+        "search_sample_seed": SEARCH_SAMPLE_SEED,
         "generations": GENERATIONS,
         "candidates_per_generation": (
             CANDIDATES_PER_GENERATION
@@ -1427,8 +1612,13 @@ async def main():
     )
 
     print(
-        f"Events / quarter during search: "
-        f"{OPTIMIZATION_PER_QUARTER}"
+        f"Search sample: {SEARCH_DECILES} deciles x "
+        f"{SEARCH_PER_DECILE_MIN}-{SEARCH_PER_DECILE_MAX} "
+        f"events/decile (seed={SEARCH_SAMPLE_SEED})"
+    )
+
+    print(
+        f"Validation sample size: {VALIDATION_SAMPLE_SIZE}"
     )
 
     print(
@@ -1449,6 +1639,8 @@ async def main():
     # in the dataset, as in your previous setup.
     #
     # If you have an explicit validation quarter, set it below.
+    #
+    # NOTE: this quarter-based split is unchanged.
     # --------------------------------------------------------
 
     validation_quarter = "2026Q2"
@@ -1489,14 +1681,18 @@ async def main():
     )
 
     # --------------------------------------------------------
-    # Build fixed evolutionary sample
+    # Build fixed evolutionary SEARCH sample
+    # (decile-stratified, inconsistency-weighted, seed changes
+    # every run, ~165 events)
     # --------------------------------------------------------
 
     optimization_sample = (
-        build_stratified_sample(
+        build_decile_stratified_sample(
             full_optimization,
-            per_quarter=OPTIMIZATION_PER_QUARTER,
-            random_state=RANDOM_STATE,
+            n_deciles=SEARCH_DECILES,
+            per_decile_min=SEARCH_PER_DECILE_MIN,
+            per_decile_max=SEARCH_PER_DECILE_MAX,
+            seed=SEARCH_SAMPLE_SEED,
         )
     )
 
@@ -1514,6 +1710,29 @@ async def main():
     print(
         f"\nFixed search sample saved to: "
         f"{search_sample_path}"
+    )
+
+    # --------------------------------------------------------
+    # Rough runtime estimate given the rate limit
+    # --------------------------------------------------------
+
+    estimated_calls = (
+        len(optimization_sample)  # generation-0 baseline
+        + GENERATIONS * CANDIDATES_PER_GENERATION
+        * (1 + len(optimization_sample))  # 1 optimizer call + eval
+    )
+
+    estimated_seconds = (
+        estimated_calls * _MIN_SECONDS_BETWEEN_CALLS
+    )
+
+    print(
+        f"\nEstimated API calls for the search phase: "
+        f"~{estimated_calls} "
+        f"(~{estimated_seconds / 3600:.1f}h at "
+        f"{MISTRAL_MAX_REQUESTS_PER_MINUTE} req/min). "
+        f"This does not include the final full-optimization "
+        f"and validation evaluation at the end."
     )
 
     # --------------------------------------------------------
@@ -1551,13 +1770,39 @@ async def main():
     )
 
     # --------------------------------------------------------
+    # Validation batch: strictly 100 events from the validation
+    # quarter (the quarter split itself is unchanged).
+    # --------------------------------------------------------
+
+    validation_sample = build_validation_sample(
+        validation,
+        n=VALIDATION_SAMPLE_SIZE,
+        random_state=RANDOM_STATE,
+    )
+
+    validation_sample_path = (
+        OUTPUT_DIR
+        / "validation_sample.csv"
+    )
+
+    validation_sample.to_csv(
+        validation_sample_path,
+        index=False,
+    )
+
+    print(
+        f"\nValidation sample saved to: "
+        f"{validation_sample_path}"
+    )
+
+    # --------------------------------------------------------
     # Full evaluation
     # --------------------------------------------------------
 
     final_results = await full_evaluation(
         best_prompt=best_prompt,
         full_optimization=full_optimization,
-        validation=validation,
+        validation=validation_sample,
     )
 
     # --------------------------------------------------------
@@ -1580,11 +1825,15 @@ async def main():
                 "search_sample_size": len(
                     optimization_sample
                 ),
+                "search_deciles": SEARCH_DECILES,
+                "search_per_decile_min": SEARCH_PER_DECILE_MIN,
+                "search_per_decile_max": SEARCH_PER_DECILE_MAX,
+                "search_sample_seed": SEARCH_SAMPLE_SEED,
                 "full_optimization_size": len(
                     full_optimization
                 ),
                 "validation_size": len(
-                    validation
+                    validation_sample
                 ),
                 "search_r2": search_r2,
                 **final_results,
