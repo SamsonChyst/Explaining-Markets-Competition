@@ -19,6 +19,7 @@ dependencies = [
     "yfinance>=1.5.2",
     "pandas-datareader>=0.10.0",
     "statsmodels>=0.14.6",
+    "wrds>=3.1.6",
 ]
 
 [dependency-groups]
