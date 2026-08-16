@@ -54,9 +54,9 @@ from dotenv import load_dotenv
 from mistralai.client import Mistral
 
 load_dotenv()
-MISTRAL_KEY = os.getenv("MISTRAL_KEY")
+MISTRAL_KEY_1 = os.getenv("MISTRAL_KEY_1")
 
-if not MISTRAL_KEY:
+if not MISTRAL_KEY_1:
     raise EnvironmentError(
         "MISTRAL_KEY is not set in the environment."
     )
@@ -69,7 +69,7 @@ if not MISTRAL_KEY:
 # a key someone else handed you. See the .env notes for why.
 MISTRAL_KEY_2 = os.getenv("MISTRAL_KEY_2")
 
-client = Mistral(api_key=MISTRAL_KEY)
+client = Mistral(api_key=MISTRAL_KEY_1)
 client_2 = Mistral(api_key=MISTRAL_KEY_2) if MISTRAL_KEY_2 else None
 
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-large-latest")
