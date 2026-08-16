@@ -20,6 +20,7 @@ dependencies = [
     "pandas-datareader>=0.10.0",
     "statsmodels>=0.14.6",
     "wrds>=3.1.6",
+    "scikit-learn>=1.7.2",
 ]
 
 [dependency-groups]
