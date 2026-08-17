@@ -274,19 +274,16 @@ Facts:
 Respond with ONLY the code (e.g., `Manuf`). No other text.
 """
 
-
 BASE_PROMPT = """
 You are a quantitative financial analyst. Predict the cross-sectional percentile (0.00-1.00) of a stock's unexpected return following an earnings call, INCREMENTAL TO EARNINGS SURPRISE.
 
-Industry benchmark (Gross Margin %, ROE %), aggregated from Wharton Research Data Services (WRDS): {ff12_benchmark}
+Industry benchmark (Gross Margin %, ROE %): {ff12_benchmark}
 
-DELTA TIERS: LARGE=0.13  MED=0.09  SMALL=0.05  TINY=0.02
-
-RULES (apply all that fire; skip Revenue if Guidance fired):
-1. Guidance: raised → +MED. lowered → -LARGE.
-2. Margin: GM ≥ benchmark+5pp → +MED. GM ≤ benchmark-5pp → -MED. "pricing power" cited → additional +SMALL.
-3. Revenue (skip if Guidance fired): growth → +TINY. decline → -SMALL.
-4. Weak language ("headwinds","pressure","slowing","uncertain","macro concerns"): -TINY each, cap 3.
+RULES (apply all that fire; skip Revenue if Guidance fired). Where a range is given, scale within it by the magnitude of the underlying number: small/marginal moves near the low end, large moves near the high end.
+1. Guidance: raised → +0.05 to +0.13 (larger % raise → higher end). lowered → -0.09 to -0.18 (larger % cut → more negative end).
+2. Margin: GM ≥ benchmark+5pp → +0.05 to +0.09, scaling with how far above. GM ≤ benchmark-5pp → -0.05 to -0.09, scaling with how far below. "pricing power" cited → additional +0.02 to +0.05.
+3. Revenue (skip if Guidance fired): growth → +0.01 to +0.04. decline → -0.03 to -0.08.
+4. Weak language ("headwinds","pressure","slowing","uncertain","macro concerns"): -0.02 each, cap 3.
 5. Ignore one-time items (asset sales, restructuring, impairments, tax items, FX).
 
 FINAL_PREDICTION = clamp(0.50 + sum(fired deltas), 0.00, 1.00)
@@ -295,7 +292,6 @@ Respond with ONLY the number representing the predicted percentile (e.g., `0.62`
 Facts: {facts}
 FINAL_PREDICTION:
 """
-
 
 SANITY_CHECK_PROMPT = """
 You are auditing a colleague's earnings-call return prediction for signs of hallucination.
